@@ -1,0 +1,1260 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="纯浏览器端魔方拼图生成、拆解与拼装进度工具" />
+  <title>魔方拼图</title>
+  <style>
+    :root { --accent:#4f8ef7; --danger:#e84040; --radius:24px; }
+    body.dark {
+      --bg:#0a0c12; --panel:rgba(12,15,26,.54); --ink:#eef0f8; --muted:#a0a8c0;
+      --line:rgba(255,255,255,.1); --field:rgba(255,255,255,.06); --field-hover:rgba(255,255,255,.11);
+      --accent-soft:rgba(26,48,96,.8); --accent-hover:rgba(40,72,136,.9); --accent-text:#b8d4ff;
+      --done-bg:rgba(79,142,247,.15); --done-text:#b8d4ff; --canvas-bg:#141824;
+      --shadow:0 20px 60px rgba(0,0,0,.22);
+    }
+    body.light {
+      --bg:#f0f2f8; --panel:rgba(255,255,255,.58); --ink:#1a1d2e; --muted:#6a70a0;
+      --line:rgba(0,0,0,.09); --field:rgba(0,0,0,.045); --field-hover:rgba(0,0,0,.085);
+      --accent-soft:rgba(60,110,220,.12); --accent-hover:rgba(60,110,220,.22); --accent-text:#2a5ad0;
+      --done-bg:rgba(79,142,247,.12); --done-text:#2a5ad0; --canvas-bg:#e5e8f0;
+      --shadow:0 20px 60px rgba(40,52,90,.08);
+    }
+    * { box-sizing: border-box; }
+    body { min-height:100vh; margin:0; color:var(--ink); background:var(--bg); font:15px/1.5 "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif; transition:background .4s ease,color .4s ease; }
+    button, input, select { font: inherit; }
+    input[type="range"] { accent-color:var(--accent); }
+    button { cursor: pointer; }
+    #theme-toggle { position:fixed; top:18px; right:20px; z-index:50; padding:6px 14px; border:1px solid var(--line); border-radius:20px; background:var(--field); color:var(--muted); font-size:13px; letter-spacing:.05em; cursor:pointer; transition:.2s; }
+    #theme-toggle:hover { background:var(--field-hover); color:var(--ink); }
+    .shell { width:min(1400px,calc(100% - 40px)); margin:0 auto; padding:58px 0 54px; }
+    .hero { padding:24px 28px; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); overflow:hidden; position:relative; }
+    .hero::after { display:none; }
+    h1 { margin:0; position:relative; z-index:1; font-size:clamp(26px,3vw,36px); line-height:1; letter-spacing:-.04em; }
+    .workspace { display: grid; grid-template-columns: 370px minmax(0,1fr); gap: 22px; margin-top: 22px; align-items: stretch; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); transition:background .4s,border-color .4s; }
+    .controls { position: sticky; top: 16px; align-self: start; overflow: hidden; }
+    .section { padding: 21px; border-bottom: 1px solid var(--line); }
+    .section:last-child { border-bottom: 0; }
+    .step { display:flex; align-items:center; gap:10px; margin-bottom:14px; font-weight:800; }
+    .step b { display:grid; place-items:center; width:25px; height:25px; border-radius:8px; background:var(--accent-soft); color:var(--accent-text); font-size:12px; }
+    .drop { display:grid; place-items:center; min-height:140px; padding:18px; text-align:center; border:1.5px dashed var(--line); border-radius:14px; background:var(--field); transition:.2s; }
+    .drop.drag { border-color:var(--accent); background:var(--accent-soft); }
+    .drop img { max-width:100%; max-height:170px; border-radius:10px; display:none; }
+    .drop .upload-copy { color:var(--muted); }
+    .drop strong { color:var(--ink); display:block; }
+    input[type=file] { display:none; }
+    .button, .file-button { border:1px solid var(--line); border-radius:10px; padding:11px 14px; background:var(--field); color:var(--ink); font-weight:600; letter-spacing:.02em; transition:background .15s,transform .1s,opacity .15s; }
+    .button:hover, .file-button:hover { transform:translateY(-1px); }
+    .button:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+    .button.primary { width:100%; padding:14px; border-color:var(--accent); color:var(--accent-text); background:var(--accent-soft); }
+    .button.primary:hover { background:var(--accent-hover); }
+    .button.ghost { background:var(--field); color:var(--muted); }
+    .button.ghost:hover { background:var(--field-hover); color:var(--ink); }
+    .button.danger { background:rgba(232,64,64,.1); border-color:rgba(232,64,64,.28); color:var(--danger); }
+    .field-label { display:flex; justify-content:space-between; gap:14px; margin-bottom:8px; color:var(--muted); font-size:13px; }
+    .field-label strong { color:var(--ink); }
+    .number { width:100%; padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--field); color:var(--ink); outline:none; }
+    .number:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,142,247,.18); }
+    .recommend { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+    .mini { padding:10px 11px; border-radius:10px; background:var(--field); color:var(--muted); font-size:12px; }
+    .mini strong { display:block; color:var(--ink); font-size:15px; }
+    .toggle-row { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .setting-title { display:flex; align-items:center; gap:7px; color:var(--ink); font-size:15px; font-weight:750; }
+    .setting-note { margin-top:2px; color:var(--muted); font-size:13px; }
+    .setting-block { margin-top:15px; }
+    .help { position:relative; display:grid; place-items:center; width:19px; height:19px; padding:0; border:1px solid var(--line); border-radius:50%; background:var(--field); color:var(--muted); font-size:12px; font-weight:850; line-height:1; cursor:help; }
+    .help::after { content:attr(data-tip); position:absolute; z-index:20; left:0; top:calc(100% + 8px); width:245px; padding:10px 11px; border:1px solid var(--line); border-radius:10px; background:#151925; color:#eef0f8; box-shadow:0 10px 30px #0003; font-size:12px; font-weight:500; line-height:1.45; opacity:0; visibility:hidden; transform:translateY(-3px); transition:.15s; pointer-events:none; }
+    .help:hover::after, .help:focus-visible::after, .help:focus::after { opacity:1; visibility:visible; transform:translateY(0); }
+    .switch { position:relative; width:46px; height:26px; flex:0 0 auto; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; inset:0; border:1px solid var(--line); border-radius:20px; background:var(--field); transition:.2s; }
+    .slider::after { content:""; position:absolute; width:20px; height:20px; left:3px; top:3px; background:white; border-radius:50%; transition:.2s; box-shadow:0 2px 7px #0002; }
+    .switch input:checked + .slider { background:var(--accent); }
+    .switch input:checked + .slider::after { transform:translateX(20px); }
+    .error { min-height:20px; margin-top:8px; color:var(--danger); font-size:12px; }
+    .main { min-width:0; display:flex; flex-direction:column; }
+    .empty { min-height:0; flex:1; display:grid; place-items:center; text-align:center; padding:40px; color:var(--muted); }
+    .empty .glyph { width:76px; height:76px; margin:0 auto 16px; display:grid; grid-template-columns:repeat(3,1fr); gap:4px; transform:rotate(8deg); }
+    .empty .glyph i { background:#dfe1d7; border-radius:4px; }
+    #results { display:none; width:100%; }
+    .result-head { padding:22px; display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
+    .result-head h2, .assembly-title h2 { margin:0 0 5px; font-size:22px; letter-spacing:-.03em; }
+    .status-badge { padding:6px 10px; border:1px solid rgba(79,142,247,.28); border-radius:20px; background:var(--accent-soft); color:var(--accent-text); font-weight:700; font-size:12px; }
+    .metrics { display:grid; grid-template-columns:repeat(5,1fr); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .metric { padding:16px; border-right:1px solid var(--line); color:var(--muted); font-size:12px; }
+    .metric:last-child { border-right:0; }
+    .metric strong { display:block; color:var(--ink); font-size:17px; margin-top:3px; }
+    .toolbar { padding:14px 18px; display:flex; flex-wrap:wrap; align-items:center; gap:9px; border-bottom:1px solid var(--line); }
+    .toolbar .button { padding:9px 12px; font-size:13px; }
+    .print-density { display:flex; align-items:center; gap:7px; padding:5px 8px 5px 10px; border:1px solid var(--line); border-radius:10px; color:var(--muted); font-size:12px; background:var(--field); }
+    .print-density input { width:54px; padding:3px 5px; border:0; border-left:1px solid var(--line); outline:0; text-align:center; color:var(--ink); font-weight:750; }
+    .zoom { margin-left:auto; display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; }
+    .canvas-wrap { min-height:380px; padding:24px; overflow:auto; background:var(--canvas-bg); background-image:linear-gradient(45deg,rgba(127,138,170,.08) 25%,transparent 25%),linear-gradient(-45deg,rgba(127,138,170,.08) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(127,138,170,.08) 75%),linear-gradient(-45deg,transparent 75%,rgba(127,138,170,.08) 75%); background-size:20px 20px; background-position:0 0,0 10px,10px -10px,-10px 0; text-align:center; }
+    #puzzleCanvas { display:inline-block; max-width:none; background:white; box-shadow:0 8px 35px #1b1d1630; transform-origin:top left; }
+    #puzzleCanvas.edit-picking { cursor:pointer; outline:3px solid var(--accent); outline-offset:4px; }
+    #puzzleCanvas.edit-picking:focus-visible { outline-width:4px; }
+    .canvas-edit-hint { flex-basis:100%; color:var(--accent-text); font-size:13px; font-weight:700; }
+    .lower-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:22px; margin-top:22px; }
+    .stats, .assembly { padding:22px; }
+    .stats h3 { margin:0 0 16px; }
+    .swatches { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
+    .swatch { display:flex; align-items:center; gap:10px; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--field); }
+    .dot { width:18px; height:18px; border-radius:5px; border:1px solid #0002; }
+    .swatch span { color:var(--muted); font-size:12px; }
+    .swatch strong { margin-left:auto; }
+    .progress-top { display:flex; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .progress { height:9px; border-radius:10px; background:var(--field); overflow:hidden; }
+    .progress i { display:block; width:0; height:100%; background:var(--accent); transition:width .25s; }
+    .assembly-panel { margin-top:22px; }
+    .assembly-title { padding:22px; display:flex; justify-content:space-between; align-items:center; gap:20px; border-bottom:1px solid var(--line); }
+    .cube-stage { display:grid; grid-template-columns:minmax(280px,.8fr) 1.2fr; min-height:440px; }
+    .current { padding:28px; border-right:1px solid var(--line); text-align:center; }
+    .cube-meta { display:flex; justify-content:center; gap:12px; color:var(--muted); font-size:13px; margin-bottom:18px; }
+    #cubeFace { width:min(100%,340px); aspect-ratio:1; margin:auto; display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:9px; background:#090b10; border:1px solid var(--line); border-radius:18px; box-shadow:0 16px 30px #0004; }
+    #cubeFace i { border-radius:7px; border:1px solid #0002; }
+    .nav { display:grid; grid-template-columns:1fr 1.2fr 1fr; gap:8px; margin-top:20px; }
+    .nav .button { padding:10px 8px; }
+    .jump { display:flex; justify-content:center; align-items:center; gap:8px; margin-top:12px; color:var(--muted); }
+    .jump input { width:80px; padding:8px; border:1px solid var(--line); border-radius:9px; background:var(--field); color:var(--ink); text-align:center; }
+    .thumb-side { padding:22px; min-width:0; }
+    .thumb-side h3 { margin:0 0 12px; }
+    #thumbGrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(56px,1fr)); gap:7px; max-height:390px; overflow:auto; padding:3px; scrollbar-gutter:stable; }
+    .thumb { padding:9px 4px; border:1px solid var(--line); border-radius:9px; background:var(--field); color:var(--ink); font-size:12px; }
+    .thumb:hover { background:var(--field-hover); }
+    .thumb.active { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent-text); }
+    .thumb.done { background:var(--done-bg); color:var(--done-text); }
+    body.dark option { background:#151925; color:#eef0f8; }
+    .print-only { display:none; }
+    @media (max-width: 980px) { .workspace { grid-template-columns:1fr; } .controls { position:static; } .empty { min-height:360px; } .lower-grid { grid-template-columns:1fr; } }
+    @media (max-width: 680px) { .shell { width:min(100% - 18px,1440px); padding-top:12px; } .hero { padding:25px 20px; } .metrics { grid-template-columns:repeat(2,1fr); } .metric { border-bottom:1px solid var(--line); } .cube-stage { grid-template-columns:1fr; } .current { border-right:0; border-bottom:1px solid var(--line); } .swatches { grid-template-columns:1fr; } .zoom { width:100%; margin-left:0; } }
+      .crop-controls { display:flex; gap:10px; margin-top:12px; align-items:center; }
+    #cropSummary { font-size:12px; margin-top:8px; overflow-wrap:anywhere; }
+    .crop-editor { width:min(940px,calc(100vw - 32px)); max-width:calc(100vw - 32px); max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); padding:22px; color:var(--ink); background:var(--bg); overflow:auto; }
+    .crop-editor::backdrop { background:rgba(0,0,0,.7); }
+    .crop-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .crop-heading h2 { margin:0; font-size:22px; }
+    .crop-heading .button { flex:none; padding:8px 11px; }
+    #cropHelp { margin:12px 0; }
+    .crop-viewport { width:100%; min-width:0; display:flex; justify-content:center; align-items:center; background:var(--canvas-bg); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+    .crop-frame { position:relative; max-width:100%; width:fit-content; overflow:hidden; line-height:0; touch-action:none; user-select:none; }
+    #cropImage { display:block; width:auto; height:auto; max-width:100%; max-height:min(58vh,620px); max-height:min(58dvh,620px); pointer-events:none; user-select:none; }
+    #cropSelection { position:absolute; border:2px solid #fff; box-shadow:0 0 0 9999px rgba(0,0,0,.6); cursor:move; touch-action:none; outline:1px solid #161923; }
+    #cropSelection::before, #cropSelection::after { content:''; position:absolute; pointer-events:none; border:1px solid rgba(255,255,255,.36); }
+    #cropSelection::before { left:33.333%; right:33.333%; top:0; bottom:0; border-top:0; border-bottom:0; }
+    #cropSelection::after { top:33.333%; bottom:33.333%; left:0; right:0; border-left:0; border-right:0; }
+    #cropSelection:focus-visible { border-color:var(--accent); outline:2px solid #fff; outline-offset:-4px; }
+    .crop-handle { position:absolute; width:26px; height:26px; padding:0; border:0; border-radius:0; background:transparent; z-index:1; touch-action:none; }
+    .crop-handle::after { content:''; position:absolute; inset:8px; background:#fff; border:1px solid #161923; border-radius:2px; }
+    .crop-handle:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+    .crop-handle:hover::after, .crop-handle:focus-visible::after { background:var(--accent); }
+    .crop-nw { left:0; top:0; cursor:nwse-resize; }
+    .crop-ne { right:0; top:0; cursor:nesw-resize; }
+    .crop-se { right:0; bottom:0; cursor:nwse-resize; }
+    .crop-sw { left:0; bottom:0; cursor:nesw-resize; }
+    .crop-n { left:50%; top:0; transform:translateX(-50%); cursor:ns-resize; }
+    .crop-s { left:50%; bottom:0; transform:translateX(-50%); cursor:ns-resize; }
+    .crop-e { right:0; top:50%; transform:translateY(-50%); cursor:ew-resize; }
+    .crop-w { left:0; top:50%; transform:translateY(-50%); cursor:ew-resize; }
+    .crop-dimensions { margin:14px 0; flex-wrap:wrap; }
+    .crop-actions { display:flex; justify-content:flex-end; gap:9px; }
+    .crop-actions .primary { width:auto; padding:11px 16px; }
+    @media (max-width:980px) { .crop-editor { width:min(820px,calc(100vw - 24px)); max-width:calc(100vw - 24px); padding:18px; } }
+    @media (max-width:680px) { .crop-editor { width:calc(100vw - 16px); max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); max-height:calc(100dvh - 16px); padding:14px; border-radius:16px; } .crop-heading h2 { font-size:19px; } #cropImage { max-height:46vh; max-height:46dvh; } #cropHelp { font-size:12px; } .crop-actions .button { padding:10px 12px; } .crop-actions .primary { flex:1; } }
+    [hidden] { display:none !important; }
+    .edit-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:16px; }
+    .edit-actions .button { padding:8px 10px; font-size:13px; }
+    #cubeFace { grid-template-rows:repeat(3,1fr); }
+    .sticker-editor { width:min(560px,calc(100vw - 32px)); max-width:calc(100vw - 32px); max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); padding:22px; color:var(--ink); background:var(--bg); overflow:auto; }
+    .sticker-editor::backdrop { background:rgba(0,0,0,.7); }
+    .sticker-editor-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+    .sticker-editor-head h2 { margin:0 0 4px; font-size:22px; }
+    .sticker-editor-head p { margin:0; color:var(--muted); font-size:13px; }
+    #editorCubeFace { width:min(100%,330px); aspect-ratio:1; margin:20px auto 16px; display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:6px; padding:9px; background:#090b10; border:1px solid var(--line); border-radius:18px; box-shadow:0 16px 30px #0004; }
+    #editorCubeFace .sticker { min-width:0; min-height:0; padding:0; border:1px solid #0002; border-radius:7px; position:relative; cursor:pointer; }
+    #editorCubeFace .sticker:hover { filter:brightness(1.15); box-shadow:inset 0 0 0 3px #10121a; }
+    #editorCubeFace .sticker.selected, #editorCubeFace .sticker:focus-visible { outline:3px solid var(--accent); outline-offset:2px; box-shadow:inset 0 0 0 3px #fff,inset 0 0 0 5px #10121a; z-index:1; }
+    .sticker-edit-tools { margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--field); text-align:left; }
+    #colorPicker { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:10px 0; }
+    .color-choice { display:flex; align-items:center; justify-content:center; gap:6px; padding:8px; }
+    .color-choice[aria-pressed=true], #editStickers[aria-pressed=true] { border-color:var(--accent); background:var(--accent-soft); }
+    #faceValidation { display:block; margin-top:10px; color:var(--accent-text); font-size:13px; }
+    #faceValidation.invalid { color:var(--danger); }
+    .face-help { margin:6px 0 0; color:var(--muted); font-size:12px; }
+    .thumb-face { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); aspect-ratio:1; gap:1px; padding:2px; background:#090b10; margin:0 auto 4px; width:min(100%,42px); }
+    .thumb-face i { min-width:0; }
+    #persistenceNotice { margin:8px 0 0; font-size:12px; color:var(--muted); }
+    #persistenceNotice:empty { display:none; }
+    #imageModeHint { height:auto; }
+    @media (max-width:680px) { .sticker-editor { width:calc(100vw - 16px); max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); max-height:calc(100dvh - 16px); padding:14px; border-radius:16px; } .sticker-editor-head h2 { font-size:19px; } }
+  </style>
+</head>
+<body class="dark">
+  <button id="theme-toggle" type="button">浅色</button>
+  <main class="shell">
+    <header class="hero">
+      <h1>魔方拼图</h1>
+    </header>
+
+    <div class="workspace">
+      <aside class="panel controls">
+        <section class="section">
+          <div class="step"><b>01</b> 上传图片</div>
+          <label class="drop" id="dropZone" for="fileInput">
+            <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" />
+            <img id="sourcePreview" alt="原图预览" />
+            <span class="upload-copy" id="uploadCopy"><strong>点击或拖放图片</strong>JPG、PNG、WebP</span>
+          </label>
+          <div class="crop-controls"><button class="button ghost" id="openCrop" type="button" disabled>调整图片 / 自定义裁剪</button></div>
+          <div class="setting-note" id="cropSummary"></div>
+          <div class="error" id="fileError"></div>
+        </section>
+        <section class="section">
+          <div class="step"><b>02</b> 设置数量</div>
+          <label class="field-label" for="maxCubes"><span>最多可使用的魔方</span><strong id="maxLabel">200</strong></label>
+          <input class="number" id="maxCubes" type="number" min="1" max="5000" value="200" inputmode="numeric" />
+          <div class="recommend"><div class="mini">自动推荐<strong id="gridHint">— × —</strong></div><div class="mini">实际使用<strong id="usedHint">— 个</strong></div></div>
+        </section>
+        <section class="section">
+          <div class="step"><b>03</b> 图像设置</div>
+          <div class="toggle-row">
+            <div><div class="setting-title">颜色抖动<button class="help" type="button" aria-label="颜色抖动说明" data-tip="用六种魔方颜色交错模拟中间色和渐变，适合照片与阴影区域；近距离观察时颗粒感会更明显。">?</button></div><div class="setting-note">Floyd–Steinberg</div></div>
+            <label class="switch"><input id="dither" type="checkbox" /><span class="slider"></span></label>
+          </div>
+          <div class="setting-block">
+            <div class="setting-title">裁剪方式<button class="help" type="button" aria-label="裁剪方式说明" data-tip="当原图比例与魔方拼图比例不一致时，决定优先保留图片的哪个区域；自动裁剪保留所选方向，也可自定义裁剪或用白色扩充画布，保持图片比例。">?</button></div>
+            <select class="number" id="cropMode" style="margin-top:8px">
+              <option value="center">居中裁剪 · Cover</option>
+              <option value="top">顶部对齐</option>
+              <option value="bottom">底部对齐</option>
+              <option value="left">左侧对齐</option>
+              <option value="right">右侧对齐</option>
+              <option value="custom" id="customCropOption" disabled>自定义裁剪区域</option>
+              <option value="expand-height">宽度与原图相同 · 上下扩充</option>
+              <option value="expand-width">高度与原图相同 · 左右扩充</option>
+            </select>
+            <div class="error" id="imageModeHint" role="status"></div>
+          </div>
+        </section>
+        <section class="section"><button class="button primary" id="generateBtn">生成魔方拼图</button><div class="error" id="generateError"></div></section>
+      </aside>
+
+      <section class="main">
+        <div class="panel empty" id="emptyState"><div><div class="glyph" id="emptyGlyph"></div><strong>结果将在这里生成</strong><div>上传图片并设置魔方数量后开始。</div></div></div>
+        <div id="results">
+          <article class="panel">
+            <div class="result-head"><div><h2>整体拼图</h2><div style="color:var(--muted)">细线分隔贴纸，粗线分隔每颗 3 × 3 魔方</div></div><span class="status-badge" id="resultBadge">已生成</span></div>
+            <div class="metrics">
+              <div class="metric">原始图片<strong id="mOriginal">—</strong></div><div class="metric">使用魔方<strong id="mUsed">—</strong></div><div class="metric">排列<strong id="mGrid">—</strong></div><div class="metric">色块分辨率<strong id="mPixels">—</strong></div><div class="metric">总色块<strong id="mStickers">—</strong></div>
+            </div>
+            <div class="toolbar">
+              <button class="button" id="exportPng">导出整体 PNG</button><button class="button ghost" id="printGuide">打印 / 导出 PDF</button>
+              <button class="button" id="editStickers" type="button" aria-pressed="false">开启编辑模式</button>
+              <label class="print-density">每页最多魔方 <input id="printPerPage" type="number" min="4" max="36" value="20" inputmode="numeric" /></label>
+              <label class="toggle-row" style="margin-left:6px;gap:7px"><span style="font-size:13px">显示完成情况</span><span class="switch"><input id="showCompletion" type="checkbox" checked /><span class="slider"></span></span></label>
+              <label class="toggle-row" style="gap:7px"><span style="font-size:13px">显示编号</span><span class="switch"><input id="showNumbers" type="checkbox" /><span class="slider"></span></span></label>
+              <div class="zoom"><span>缩放</span><input id="zoomRange" type="range" min="35" max="180" value="100" /><strong id="zoomLabel">100%</strong></div>
+              <span class="canvas-edit-hint" id="canvasEditHint" role="status" hidden>编辑模式已开启：在整体图中点击要修改的魔方。</span>
+            </div>
+            <div class="canvas-wrap"><canvas id="puzzleCanvas" aria-label="魔方拼图整体图" tabindex="-1"></canvas></div>
+          </article>
+          <div class="lower-grid">
+            <article class="panel stats"><h3>六色色块统计</h3><div class="swatches" id="swatches"></div></article>
+            <article class="panel assembly"><div class="progress-top"><strong>拼装进度</strong><span id="progressText">0 / 0 · 0%</span></div><div class="progress"><i id="progressBar"></i></div><p id="persistenceNotice" role="status"></p><button class="button danger" id="resetProgress" style="margin-top:15px;padding:8px 10px;font-size:12px">重置进度</button></article>
+          </div>
+          <article class="panel assembly-panel">
+            <div class="assembly-title"><div><h2>拼装模式</h2><span style="color:var(--muted)">逐颗查看并标记完成</span></div><span class="status-badge" id="currentLabel">Cube 001</span></div>
+            <div class="cube-stage">
+              <div class="current"><div class="cube-meta"><span id="cubeRow">Row 1</span><span id="cubeCol">Column 1</span></div><div id="cubeFace" aria-label="当前魔方 3×3 图案"></div>
+                <div class="nav"><button class="button ghost" id="prevCube">← 上一颗</button><button class="button" id="markDone">标记完成</button><button class="button ghost" id="nextCube">下一颗 →</button></div>
+                <div class="jump">跳转到 <input id="jumpInput" type="number" min="1" value="1" /> <button class="button ghost" id="jumpBtn" style="padding:7px 10px">前往</button></div>
+              </div>
+              <div class="thumb-side"><h3>全部魔方</h3><div id="thumbGrid"></div></div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <dialog class="panel crop-editor" id="cropEditor" aria-labelledby="cropTitle" aria-describedby="cropHelp">
+    <div class="crop-heading"><h2 id="cropTitle">自定义裁剪</h2><button class="button ghost" id="closeCrop" type="button" aria-label="关闭裁剪编辑器">关闭 ×</button></div>
+    <p class="setting-note" id="cropHelp">拖动裁剪框移动，拖动四角或四边调整。方向键可移动选中的框或边，Shift + 方向键每次调整 10 像素。</p>
+    <div class="crop-viewport">
+      <div class="crop-frame">
+        <img id="cropImage" alt="完整原图，裁剪框覆盖所选区域" draggable="false" />
+        <div id="cropSelection" tabindex="0" role="group" aria-label="裁剪框，按方向键移动">
+          <button class="crop-handle crop-nw" data-crop-handle="nw" type="button" aria-label="调整左上角"></button>
+          <button class="crop-handle crop-n" data-crop-handle="n" type="button" aria-label="调整上边"></button>
+          <button class="crop-handle crop-ne" data-crop-handle="ne" type="button" aria-label="调整右上角"></button>
+          <button class="crop-handle crop-e" data-crop-handle="e" type="button" aria-label="调整右边"></button>
+          <button class="crop-handle crop-se" data-crop-handle="se" type="button" aria-label="调整右下角"></button>
+          <button class="crop-handle crop-s" data-crop-handle="s" type="button" aria-label="调整下边"></button>
+          <button class="crop-handle crop-sw" data-crop-handle="sw" type="button" aria-label="调整左下角"></button>
+          <button class="crop-handle crop-w" data-crop-handle="w" type="button" aria-label="调整左边"></button>
+        </div>
+      </div>
+    </div>
+    <div class="field-label crop-dimensions"><span>原图像素尺寸</span><strong id="cropDimensions" aria-live="polite">— × —</strong></div>
+    <div class="crop-actions"><button class="button ghost" id="resetCrop" type="button">重置</button><button class="button ghost" id="cancelCrop" type="button">取消</button><button class="button primary" id="applyCrop" type="button">应用裁剪</button></div>
+  </dialog>
+
+  <dialog class="panel sticker-editor" id="stickerEditorDialog" aria-labelledby="stickerEditorTitle">
+    <div class="sticker-editor-head">
+      <div><h2 id="stickerEditorTitle">编辑 Cube 001</h2><p id="stickerEditorMeta">第 1 行 · 第 1 列</p></div>
+      <button class="button ghost" id="closeStickerEditor" type="button" aria-label="关闭色块编辑器">关闭 ×</button>
+    </div>
+    <div id="editorCubeFace" aria-label="待编辑魔方的 3×3 图案"></div>
+    <div class="sticker-edit-tools">
+      <div class="setting-note" id="stickerSelection" aria-live="polite">点击一个色块，再选择颜色。</div>
+      <div id="colorPicker" role="group" aria-label="六色选择器" hidden></div>
+      <strong id="faceValidation" role="status">物理状态：单面可实现 ✓</strong>
+      <p class="face-help">当前系统只定义每颗魔方朝向拼图的一面。仅凭一个 3×3 面无法判断整颗魔方的唯一状态；任意六色单面图案都可以对应至少一个合法完整魔方状态。</p>
+    </div>
+    <div class="edit-actions"><button class="button ghost" id="undoEdit" type="button" disabled>撤销上一步</button><button class="button ghost" id="restoreColors" type="button" disabled>恢复此魔方自动结果</button><button class="button primary" id="finishStickerEditor" type="button">完成修改</button></div>
+  </dialog>
+
+  <script>
+  (() => {
+    'use strict';
+    const PALETTE = Object.freeze({
+      white:{label:'白',hex:'#F4F4EE',rgb:[244,244,238]}, yellow:{label:'黄',hex:'#FFD500',rgb:[255,213,0]},
+      red:{label:'红',hex:'#C9282D',rgb:[201,40,45]}, orange:{label:'橙',hex:'#F47A20',rgb:[244,122,32]},
+      blue:{label:'蓝',hex:'#1558B0',rgb:[21,88,176]}, green:{label:'绿',hex:'#17934A',rgb:[23,147,74]}
+    });
+    const COLOR_KEYS = Object.keys(PALETTE);
+    const $ = id => document.getElementById(id);
+    const state = {
+      image:null, fileName:'', imageId:'', crop:null, cropDraft:null, result:null, current:0,
+      completed:new Set(), autoCompleted:new Set(), manualCompleted:new Set(), zoom:1,
+      editMode:false, selectedSticker:null, hoveredCube:null, editHistory:[], originalGeneratedColors:[],
+      settingsDirty:false, loadingImage:false, loadToken:0
+    };
+    const pad = n => String(n).padStart(3,'0');
+    const clamp = (n,a,b) => Math.max(a,Math.min(b,n));
+
+    // ---------- 独立算法：网格计算 ----------
+    function calculateCubeGrid(imageWidth, imageHeight, maxCubes) {
+      if (!(imageWidth>0 && imageHeight>0 && maxCubes>=1)) throw new Error('网格参数无效');
+      const target = imageWidth/imageHeight; let best=null;
+      for (let rows=1; rows<=maxCubes; rows++) {
+        const maxCols=Math.floor(maxCubes/rows); if (!maxCols) break;
+        for (let columns=Math.max(1,Math.min(maxCols,Math.floor(target*rows)-2)); columns<=Math.min(maxCols,Math.ceil(target*rows)+2); columns++) {
+          const used=columns*rows, ratio=columns/rows;
+          const ratioError=Math.abs(Math.log(ratio/target));
+          const utilization=used/maxCubes;
+          const score=ratioError*1.6+(1-utilization)*1.3;
+          if (!best || score<best.score-1e-9 || (Math.abs(score-best.score)<1e-9 && used>best.usedCubes)) best={cubeColumns:columns,cubeRows:rows,usedCubes:used,score};
+        }
+      }
+      return best;
+    }
+
+    // ---------- 独立算法：sRGB -> CIELAB 与 Delta E 76 ----------
+    function rgbToLab(rgb) {
+      let [r,g,b]=rgb.map(v=>v/255).map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4));
+      let x=(r*.4124+g*.3576+b*.1805)/.95047, y=(r*.2126+g*.7152+b*.0722), z=(r*.0193+g*.1192+b*.9505)/1.08883;
+      const f=v=>v>.008856?Math.cbrt(v):(7.787*v)+16/116; x=f(x);y=f(y);z=f(z);
+      return [116*y-16,500*(x-y),200*(y-z)];
+    }
+    const PALETTE_LAB = Object.fromEntries(COLOR_KEYS.map(k=>[k,rgbToLab(PALETTE[k].rgb)]));
+    function quantizeToCubeColor(rgb) {
+      const lab=rgbToLab(rgb); let best=COLOR_KEYS[0], bestD=Infinity;
+      for (const k of COLOR_KEYS) { const p=PALETTE_LAB[k], d=(lab[0]-p[0])**2+(lab[1]-p[1])**2+(lab[2]-p[2])**2; if(d<bestD){bestD=d;best=k;} }
+      return best;
+    }
+
+    // ---------- 独立算法：居中 cover 裁剪与高质量逐级缩放 ----------
+
+
+    function quantizePixels(imageData,w,h,useDither) {
+      const data=new Float32Array(imageData.data), colors=new Array(w*h);
+      for(let i=0;i<w*h;i++){
+        const p=i*4,key=quantizeToCubeColor([clamp(data[p],0,255),clamp(data[p+1],0,255),clamp(data[p+2],0,255)]);colors[i]=key;
+        if(useDither){const q=PALETTE[key].rgb,er=data[p]-q[0],eg=data[p+1]-q[1],eb=data[p+2]-q[2],x=i%w,y=Math.floor(i/w);const add=(xx,yy,f)=>{if(xx<0||xx>=w||yy<0||yy>=h)return;const j=(yy*w+xx)*4;data[j]+=er*f;data[j+1]+=eg*f;data[j+2]+=eb*f;};add(x+1,y,7/16);add(x-1,y+1,3/16);add(x,y+1,5/16);add(x+1,y+1,1/16);}
+      } return colors;
+    }
+    function splitIntoCubes(colors,pixelColumns,pixelRows) {
+      if(pixelColumns%3||pixelRows%3) throw new Error('色块尺寸必须为 3 的倍数'); const cubes=[];let id=1;
+      for(let cr=0;cr<pixelRows/3;cr++) for(let cc=0;cc<pixelColumns/3;cc++){const face=[];for(let y=0;y<3;y++){const row=[];for(let x=0;x<3;x++)row.push(colors[(cr*3+y)*pixelColumns+(cc*3+x)]);face.push(row);}cubes.push({id:id++,row:cr+1,column:cc+1,colors:face});} return cubes;
+    }
+
+    function drawPuzzle(canvas,r,{numbers=false,completed=false,exportScale=1,highlightCube=null}={}){
+      const sticker=Math.max(8,Math.round(18*exportScale)), thin=Math.max(1,Math.round(exportScale)), thick=Math.max(2,Math.round(3*exportScale));canvas.width=r.pixelColumns*sticker+thick;canvas.height=r.pixelRows*sticker+thick;canvas.dataset.stickerSize=String(sticker);const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+      for(let y=0;y<r.pixelRows;y++)for(let x=0;x<r.pixelColumns;x++){ctx.fillStyle=PALETTE[r.colors[y*r.pixelColumns+x]].hex;ctx.fillRect(x*sticker,y*sticker,sticker,sticker);}
+      ctx.strokeStyle='rgba(10,12,9,.46)';ctx.lineWidth=thin;ctx.beginPath();for(let x=0;x<=r.pixelColumns;x++){ctx.moveTo(x*sticker+.5,0);ctx.lineTo(x*sticker+.5,r.pixelRows*sticker);}for(let y=0;y<=r.pixelRows;y++){ctx.moveTo(0,y*sticker+.5);ctx.lineTo(r.pixelColumns*sticker,y*sticker+.5);}ctx.stroke();
+      ctx.strokeStyle='#10120e';ctx.lineWidth=thick;ctx.beginPath();for(let x=0;x<=r.pixelColumns;x+=3){ctx.moveTo(x*sticker,0);ctx.lineTo(x*sticker,r.pixelRows*sticker);}for(let y=0;y<=r.pixelRows;y+=3){ctx.moveTo(0,y*sticker);ctx.lineTo(r.pixelColumns*sticker,y*sticker);}ctx.stroke();
+      if(numbers||completed){ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`700 ${Math.max(8,Math.round(sticker*.62))}px system-ui`;for(const cube of r.cubes){const x=(cube.column-1)*3*sticker,y=(cube.row-1)*3*sticker,cx=x+1.5*sticker,cy=y+1.5*sticker;if(completed&&state.completed.has(cube.id)){ctx.fillStyle='rgba(18,30,12,.38)';ctx.fillRect(x,y,3*sticker,3*sticker);ctx.fillStyle='#fff';ctx.font=`800 ${sticker}px system-ui`;ctx.fillText('✓',cx,cy);}else if(numbers){const label=pad(cube.id);ctx.font=`700 ${Math.max(8,Math.round(sticker*.6))}px system-ui`;const tw=ctx.measureText(label).width;ctx.fillStyle='rgba(255,255,255,.72)';ctx.fillRect(cx-tw/2-3*exportScale,cy-sticker*.42,tw+6*exportScale,sticker*.84);ctx.fillStyle='#111';ctx.fillText(label,cx,cy);}}}
+      if(Number.isInteger(highlightCube)&&highlightCube>=0&&highlightCube<r.cubeCount){const col=highlightCube%r.cubeColumns,row=Math.floor(highlightCube/r.cubeColumns),x=col*3*sticker,y=row*3*sticker;ctx.fillStyle='rgba(79,142,247,.2)';ctx.fillRect(x,y,3*sticker,3*sticker);ctx.strokeStyle='#4f8ef7';ctx.lineWidth=Math.max(4,thick+2);ctx.strokeRect(x+ctx.lineWidth/2,y+ctx.lineWidth/2,3*sticker-ctx.lineWidth,3*sticker-ctx.lineWidth);}
+    }
+
+    function renderPuzzleCanvas(){if(!state.result)return;drawPuzzle($('puzzleCanvas'),state.result,{numbers:$('showNumbers').checked,completed:$('showCompletion').checked,highlightCube:state.editMode?state.hoveredCube:null});}
+    function cubeIndexFromCanvasPoint(canvas,clientX,clientY){
+      if(!state.result)return null;const rect=canvas.getBoundingClientRect();if(!(rect.width>0&&rect.height>0))return null;
+      const x=(clientX-rect.left)*canvas.width/rect.width,y=(clientY-rect.top)*canvas.height/rect.height,sticker=Number(canvas.dataset.stickerSize)||18;
+      if(x<0||y<0||x>=state.result.pixelColumns*sticker||y>=state.result.pixelRows*sticker)return null;
+      const pixelX=Math.floor(x/sticker),pixelY=Math.floor(y/sticker);return Math.floor(pixelY/3)*state.result.cubeColumns+Math.floor(pixelX/3);
+    }
+
+
+
+
+
+
+
+
+
+    function renderResult(){$('emptyState').style.display='none';$('results').style.display='block';const r=state.result;$('mOriginal').textContent=`${r.originalWidth} × ${r.originalHeight}`;$('mUsed').textContent=`${r.cubeCount} / ${r.maxCubes}`;$('mGrid').textContent=`${r.cubeColumns} × ${r.cubeRows}`;$('mPixels').textContent=`${r.pixelColumns} × ${r.pixelRows}`;$('mStickers').textContent=(r.cubeCount*9).toLocaleString();$('resultBadge').textContent=state.settingsDirty?'设置已修改 · 请重新生成':`${r.dither?'已生成 · 抖动开启':'已生成 · 无抖动'}${r.colors.some((color,index)=>color!==state.originalGeneratedColors[index])?' · 已人工修正':''}`;$('jumpInput').max=r.cubeCount;renderPuzzleCanvas();renderStats();renderThumbs();renderCurrent();renderProgress();renderEditControls();}
+    function renderStats(){$('swatches').innerHTML=COLOR_KEYS.map(k=>`<div class="swatch"><i class="dot" style="background:${PALETTE[k].hex}"></i><span>${PALETTE[k].label}</span><strong>${state.result.colorStatistics[k].toLocaleString()}</strong></div>`).join('');}
+
+
+    function renderProgress(){const n=state.completed.size,total=state.result.cubeCount,p=total?n/total*100:0;$('progressText').textContent=`${n} / ${total} · ${p.toFixed(1)}%`;$('progressBar').style.width=`${p}%`;renderPuzzleCanvas();}
+
+    function downloadCanvas(canvas,name){canvas.toBlob(blob=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);},'image/png');}
+    function exportPNG(){const c=document.createElement('canvas');drawPuzzle(c,state.result,{numbers:$('showNumbers').checked,completed:$('showCompletion').checked,exportScale:2});downloadCanvas(c,`rubiks-puzzle-${state.result.cubeColumns}x${state.result.cubeRows}.png`);}
+    function drawPrintRegion(r,startCol,startRow,cubeCols,cubeRows,stickerSize){
+      const sticker=stickerSize||Math.max(22,Math.floor(1100/(Math.max(cubeCols,cubeRows)*3))),thin=Math.max(1,Math.round(sticker*.035)),thick=Math.max(3,Math.round(sticker*.12));
+      const pixelCols=cubeCols*3,pixelRows=cubeRows*3,canvas=document.createElement('canvas');canvas.width=pixelCols*sticker+thick;canvas.height=pixelRows*sticker+thick;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+      for(let y=0;y<pixelRows;y++)for(let x=0;x<pixelCols;x++){const sourceX=startCol*3+x,sourceY=startRow*3+y;ctx.fillStyle=PALETTE[r.colors[sourceY*r.pixelColumns+sourceX]].hex;ctx.fillRect(x*sticker,y*sticker,sticker,sticker);}
+      ctx.strokeStyle='rgba(12,14,11,.45)';ctx.lineWidth=thin;ctx.beginPath();for(let x=0;x<=pixelCols;x++){ctx.moveTo(x*sticker,0);ctx.lineTo(x*sticker,pixelRows*sticker);}for(let y=0;y<=pixelRows;y++){ctx.moveTo(0,y*sticker);ctx.lineTo(pixelCols*sticker,y*sticker);}ctx.stroke();
+      ctx.strokeStyle='#111';ctx.lineWidth=thick;ctx.beginPath();for(let x=0;x<=pixelCols;x+=3){ctx.moveTo(x*sticker,0);ctx.lineTo(x*sticker,pixelRows*sticker);}for(let y=0;y<=pixelRows;y+=3){ctx.moveTo(0,y*sticker);ctx.lineTo(pixelCols*sticker,y*sticker);}ctx.stroke();return {canvas,sticker};
+    }
+    function printGuide(){
+      const r=state.result,perPage=clamp(Math.floor(Number($('printPerPage').value)||20),4,36);$('printPerPage').value=perPage;
+      const w=window.open('','_blank');if(!w){alert('浏览器阻止了打印窗口，请允许弹出窗口后重试。');return;}
+      const tileCols=Math.min(r.cubeColumns,Math.max(1,Math.round(Math.sqrt(perPage*.75)))),tileRows=Math.min(r.cubeRows,Math.max(1,Math.floor(perPage/tileCols))),tiles=[];
+      for(let row=0;row<r.cubeRows;row+=tileRows)for(let col=0;col<r.cubeColumns;col+=tileCols)tiles.push({page:tiles.length+1,col,row,cols:Math.min(tileCols,r.cubeColumns-col),rows:Math.min(tileRows,r.cubeRows-row)});
+      const pages=tiles.map(t=>{const image=drawPrintRegion(r,t.col,t.row,t.cols,t.rows).canvas.toDataURL('image/png');return `<section class="print-page"><header><div><h1>图像切片 ${t.page}</h1><p>整体位置：第 ${t.row+1}–${t.row+t.rows} 行 · 第 ${t.col+1}–${t.col+t.cols} 列</p></div><strong>${t.page} / ${tiles.length}</strong></header><div class="image-stage"><img src="${image}" alt="图像切片 ${t.page}"></div><footer>上方为整体图像的上方 · ${t.cols} × ${t.rows} 颗魔方</footer></section>`;}).join('');
+      const overview=drawPrintRegion(r,0,0,r.cubeColumns,r.cubeRows,Math.max(4,Math.min(16,Math.floor(1200/Math.max(r.pixelColumns,r.pixelRows))))),oc=overview.canvas,ctx=oc.getContext('2d'),s=overview.sticker;
+      ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='800 30px system-ui';const pageFont=Math.max(9,Math.min(30,...tiles.map(t=>{const width=t.cols*3*s,height=t.rows*3*s,labelWidth=ctx.measureText(`P${t.page}`).width;return Math.min((width-10)*30/Math.max(1,labelWidth),height*.34);})));for(const t of tiles){const x=t.col*3*s,y=t.row*3*s,width=t.cols*3*s,height=t.rows*3*s,label=`P${t.page}`;ctx.strokeStyle='#e11d2e';ctx.lineWidth=Math.max(3,s*.32);ctx.strokeRect(x,y,width,height);ctx.font=`800 ${pageFont}px system-ui`;const tw=ctx.measureText(label).width;ctx.fillStyle='rgba(255,255,255,.88)';ctx.fillRect(x+width/2-tw/2-5,y+height/2-pageFont*.58,tw+10,pageFont*1.16);ctx.fillStyle='#b40018';ctx.fillText(label,x+width/2,y+height/2);}
+      const indexPage=`<section class="print-page"><header><div><h1>整体切片位置</h1><p>红框表示每张打印页在完整图像中的位置。</p></div><strong>${r.cubeColumns} × ${r.cubeRows}</strong></header><div class="image-stage"><img src="${oc.toDataURL('image/png')}" alt="整体切片位置图"></div><footer>页码按从左到右、从上到下排列</footer></section>`;
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>魔方拼图图像切片</title><style>@page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}html,body{margin:0;color:#111;font-family:system-ui,-apple-system,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-page{width:194mm;height:277mm;break-after:page;page-break-after:always;display:flex;flex-direction:column;overflow:hidden}.print-page:last-child{break-after:auto;page-break-after:auto}header{height:16mm;flex:none;display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4mm}header h1{font-size:15pt;line-height:1;margin:0 0 2mm}header p{font-size:8pt;color:#555;margin:0}header>strong{font-size:9pt}.image-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}.image-stage img{display:block;max-width:100%;max-height:243mm;width:auto;height:auto;object-fit:contain}footer{height:8mm;flex:none;padding-top:2mm;text-align:center;color:#666;font-size:7pt}@media screen{body{background:#ddd;padding:12px}.print-page{width:210mm;height:293mm;margin:0 auto 12px;padding:8mm;background:#fff;box-shadow:0 4px 20px #0002}}</style></head><body>${pages}${indexPage}<script>onload=()=>setTimeout(()=>print(),500)<\/script></body></html>`);w.document.close();
+    }
+
+
+    // ---------- 原图坐标裁剪 / 逻辑画布扩充 / 等比采样 ----------
+    const EXPANSION_BACKGROUND = '#FFFFFF';
+    const MIN_CROP_SIZE = 10;
+    const AUTOMATIC_CROP_MODES = ['center','top','bottom','left','right'];
+
+    function readSourceRect(image, rect) {
+      const normalized = {
+        sx:rect?.sx ?? rect?.x, sy:rect?.sy ?? rect?.y,
+        sw:rect?.sw ?? rect?.width, sh:rect?.sh ?? rect?.height
+      };
+      const {sx,sy,sw,sh}=normalized, iw=image.naturalWidth, ih=image.naturalHeight;
+      if (![sx,sy,sw,sh].every(Number.isFinite) || sx<0 || sy<0 || sw<MIN_CROP_SIZE || sh<MIN_CROP_SIZE || sx+sw>iw+1e-7 || sy+sh>ih+1e-7) {
+        throw new Error('裁剪区域必须位于原图内，且至少为 10 × 10 像素。');
+      }
+      return normalized;
+    }
+
+    function getEffectiveImageSize(image=state.image, crop=state.crop, mode=$('cropMode').value) {
+      if (!image || !(image.naturalWidth>0 && image.naturalHeight>0)) return {width:0,height:0};
+      if (mode==='custom') {
+        if (!crop) throw new Error('请先打开“调整图片”并应用自定义裁剪。');
+        const rect=readSourceRect(image,crop);
+        return {width:rect.sw,height:rect.sh};
+      }
+      return {width:image.naturalWidth,height:image.naturalHeight};
+    }
+
+    function cropRect(sw,sh,targetRatio,mode='center') {
+      if (!(sw>0 && sh>0 && targetRatio>0) || !AUTOMATIC_CROP_MODES.includes(mode)) throw new Error('自动裁剪参数无效。');
+      if (sw/sh>targetRatio) {
+        const width=sh*targetRatio, sx=mode==='left'?0:mode==='right'?sw-width:(sw-width)/2;
+        return {sx,sy:0,sw:width,sh};
+      }
+      const height=sw/targetRatio, sy=mode==='top'?0:mode==='bottom'?sh-height:(sh-height)/2;
+      return {sx:0,sy,sw,sh:height};
+    }
+
+    function getImageSourceOrExpansion(image,w,h,mode='center',sourceRect=null) {
+      if (!image || !(image.naturalWidth>0 && image.naturalHeight>0 && w>0 && h>0) || ![w,h].every(Number.isFinite)) throw new Error('图片或采样尺寸无效。');
+      const targetRatio=w/h, iw=image.naturalWidth, ih=image.naturalHeight;
+      let source={sx:0,sy:0,sw:iw,sh:ih}, canvasWidth=iw, canvasHeight=ih, kind=mode;
+      if (sourceRect) {
+        // 明确的源矩形优先；整数魔方网格的比例误差通过留白补足，不进行二次裁剪。
+        source=readSourceRect(image,sourceRect);
+        canvasWidth=Math.max(source.sw,source.sh*targetRatio);
+        canvasHeight=canvasWidth/targetRatio;
+        kind='custom';
+      } else if (mode==='custom') {
+        throw new Error('自定义裁剪缺少有效的原图区域。');
+      } else if (mode==='expand-height') {
+        canvasHeight=iw/targetRatio;
+        if (canvasHeight<ih-1e-7) throw new Error('当前目标比例无法在保持原图宽度的情况下仅通过扩充实现，请选择“高度与原图相同 · 左右扩充”。');
+      } else if (mode==='expand-width') {
+        canvasWidth=ih*targetRatio;
+        if (canvasWidth<iw-1e-7) throw new Error('当前目标比例无法在保持原图高度的情况下仅通过扩充实现，请选择“宽度与原图相同 · 上下扩充”。');
+      } else {
+        source=cropRect(iw,ih,targetRatio,mode);
+        canvasWidth=source.sw;
+        canvasHeight=source.sh;
+        kind='automatic';
+      }
+      return {kind,sourceRect:source,canvasWidth,canvasHeight,offsetX:(canvasWidth-source.sw)/2,offsetY:(canvasHeight-source.sh)/2,drawWidth:source.sw,drawHeight:source.sh};
+    }
+
+    function prepareImageCanvas(image,w,h,mode='center',sourceRect=null) {
+      if (![w,h].every(n=>Number.isInteger(n)&&n>0)) throw new Error('色块采样尺寸必须为正整数。');
+      const geometry=getImageSourceOrExpansion(image,w,h,mode,sourceRect);
+      // 逻辑画布可以包含小数，不分配原图大小的扩充 canvas。
+      // 每次只用输出尺寸的整数倍，保证中间 canvas 的宽高比精确一致。
+      const factorLimit=Math.max(1,Math.floor(Math.min(1600/Math.max(w,h),geometry.canvasWidth/w,geometry.canvasHeight/h)));
+      const factor=2**Math.floor(Math.log2(factorLimit));
+      const canvas=document.createElement('canvas');canvas.width=w*factor;canvas.height=h*factor;
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});
+      const scale=canvas.width/geometry.canvasWidth, r=geometry.sourceRect;
+      ctx.fillStyle=EXPANSION_BACKGROUND;ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+      ctx.drawImage(image,r.sx,r.sy,r.sw,r.sh,geometry.offsetX*scale,geometry.offsetY*scale,geometry.drawWidth*scale,geometry.drawHeight*scale);
+      return canvas;
+    }
+
+    function sampleImage(image,w,h,mode='center',sourceRect=null) {
+      let canvas=prepareImageCanvas(image,w,h,mode,sourceRect), factor=canvas.width/w;
+      while (factor>1) {
+        factor=Math.max(1,Math.floor(factor/2));
+        const next=document.createElement('canvas');next.width=w*factor;next.height=h*factor;
+        const ctx=next.getContext('2d',{willReadFrequently:true});
+        ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(canvas,0,0,next.width,next.height);
+        canvas=next;
+      }
+      return canvas.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h);
+    }
+
+    // ---------- 可视化裁剪；草稿与已应用区域分离 ----------
+    function fullImageCrop() {
+      return {type:'custom',x:0,y:0,width:state.image.naturalWidth,height:state.image.naturalHeight};
+    }
+
+    function updateCropSummary() {
+      const image=state.image, supported=!!image && image.naturalWidth>=MIN_CROP_SIZE && image.naturalHeight>=MIN_CROP_SIZE;
+      $('openCrop').disabled=!supported;
+      $('customCropOption').disabled=!state.crop;
+      if (!image) {$('cropSummary').textContent='裁剪坐标以原图像素保存，原图始终保留。';return;}
+      if (!supported) {$('cropSummary').textContent='原图小于 10 × 10 像素，无法使用自定义裁剪。';return;}
+      if ($('cropMode').value==='custom' && state.crop) {
+        const c=state.crop;
+        $('cropSummary').textContent=`自定义区域 ${c.width} × ${c.height} px · 起点 (${c.x}, ${c.y})。完整保留所选区域；网格比例有误差时使用白色留边。`;
+      } else if ($('cropMode').value.startsWith('expand-')) {
+        $('cropSummary').textContent='扩充使用完整原图并居中放置，新增区域为白色；最终采样保持等比。';
+      } else {$('cropSummary').textContent='自动裁剪使用完整原图；已保存的自定义区域可在裁剪方式中重新选择。';}
+    }
+
+    function renderCropDraft() {
+      const c=state.cropDraft, image=state.image;
+      if (!c || !image) return;
+      const selection=$('cropSelection');
+      selection.style.left=`${c.x/image.naturalWidth*100}%`;selection.style.top=`${c.y/image.naturalHeight*100}%`;
+      selection.style.width=`${c.width/image.naturalWidth*100}%`;selection.style.height=`${c.height/image.naturalHeight*100}%`;
+      $('cropDimensions').textContent=`${c.width} × ${c.height} px · 起点 (${c.x}, ${c.y})`;
+    }
+
+    function openCropEditor() {
+      if (!state.image || state.image.naturalWidth<MIN_CROP_SIZE || state.image.naturalHeight<MIN_CROP_SIZE) return;
+      if ($('cropEditor').open) return;
+      state.cropReturnFocus=document.activeElement;
+      state.cropDraft=state.crop ? {...state.crop} : fullImageCrop();
+      state.cropDrag=null;$('cropImage').src=state.image.src;
+      renderCropDraft();$('cropEditor').showModal();$('cropSelection').focus({preventScroll:true});
+    }
+
+    function releaseCropPointer() {
+      const drag=state.cropDrag;
+      state.cropDrag=null;
+      if (drag && $('cropSelection').hasPointerCapture(drag.pointerId)) $('cropSelection').releasePointerCapture(drag.pointerId);
+    }
+
+    function closeCropEditor() {
+      releaseCropPointer();state.cropDraft=null;
+      if ($('cropEditor').open) $('cropEditor').close();
+      const returnFocus=state.cropReturnFocus;state.cropReturnFocus=null;
+      if (returnFocus?.isConnected) returnFocus.focus({preventScroll:true});
+    }
+
+    function resetCrop() {
+      if (!state.image) return;
+      releaseCropPointer();state.cropDraft=fullImageCrop();renderCropDraft();
+    }
+
+    function applyCustomCrop() {
+      if (!state.cropDraft) return;
+      const rect=readSourceRect(state.image,state.cropDraft);
+      state.crop={type:'custom',x:rect.sx,y:rect.sy,width:rect.sw,height:rect.sh};
+      $('customCropOption').disabled=false;$('cropMode').value='custom';
+      updateCropSummary();updateRecommendation();markResultStale();closeCropEditor();
+    }
+
+    function resizedCrop(start,handle,dx,dy,image=state.image) {
+      const iw=image.naturalWidth, ih=image.naturalHeight;
+      dx=Math.round(dx);dy=Math.round(dy);
+      if (handle==='move') return {...start,x:clamp(start.x+dx,0,iw-start.width),y:clamp(start.y+dy,0,ih-start.height)};
+      let left=start.x,top=start.y,right=start.x+start.width,bottom=start.y+start.height;
+      if (handle.includes('w')) left=clamp(left+dx,0,right-MIN_CROP_SIZE);
+      if (handle.includes('e')) right=clamp(right+dx,left+MIN_CROP_SIZE,iw);
+      if (handle.includes('n')) top=clamp(top+dy,0,bottom-MIN_CROP_SIZE);
+      if (handle.includes('s')) bottom=clamp(bottom+dy,top+MIN_CROP_SIZE,ih);
+      return {type:'custom',x:left,y:top,width:right-left,height:bottom-top};
+    }
+
+    function cropPointerPoint(event) {
+      const bounds=$('cropImage').getBoundingClientRect();
+      return {x:(event.clientX-bounds.left)/bounds.width*state.image.naturalWidth,y:(event.clientY-bounds.top)/bounds.height*state.image.naturalHeight};
+    }
+
+    function beginCropDrag(event) {
+      if (!state.cropDraft || state.cropDrag || event.isPrimary===false || (event.pointerType==='mouse' && event.button!==0)) return;
+      event.preventDefault();
+      const handle=event.target.closest('[data-crop-handle]');
+      (handle || $('cropSelection')).focus({preventScroll:true});
+      state.cropDrag={pointerId:event.pointerId,handle:handle?.dataset.cropHandle || 'move',start:{...state.cropDraft},point:cropPointerPoint(event)};
+      $('cropSelection').setPointerCapture(event.pointerId);
+    }
+
+    function moveCropDrag(event) {
+      const drag=state.cropDrag;
+      if (!drag || event.pointerId!==drag.pointerId) return;
+      event.preventDefault();
+      const point=cropPointerPoint(event);
+      state.cropDraft=resizedCrop(drag.start,drag.handle,point.x-drag.point.x,point.y-drag.point.y);renderCropDraft();
+    }
+
+    function cropKeyboard(event) {
+      if (!state.cropDraft || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+      event.preventDefault();event.stopPropagation();
+      const step=event.shiftKey?10:1, handle=event.target.closest('[data-crop-handle]')?.dataset.cropHandle || 'move';
+      const dx=event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0,dy=event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0;
+      state.cropDraft=resizedCrop(state.cropDraft,handle,dx,dy);renderCropDraft();
+    }
+
+    function bindCropEvents() {
+      if ($('cropEditor').dataset.eventsBound==='true') return;
+      $('cropEditor').dataset.eventsBound='true';
+      $('openCrop').addEventListener('click',openCropEditor);
+      $('applyCrop').addEventListener('click',applyCustomCrop);$('resetCrop').addEventListener('click',resetCrop);
+      $('cancelCrop').addEventListener('click',closeCropEditor);$('closeCrop').addEventListener('click',closeCropEditor);
+      $('cropEditor').addEventListener('cancel',event=>{event.preventDefault();closeCropEditor();});
+      $('cropEditor').addEventListener('close',()=>{if(!$('cropEditor').open && (state.cropDraft || state.cropReturnFocus))closeCropEditor();});
+      $('cropSelection').addEventListener('pointerdown',beginCropDrag);
+      $('cropSelection').addEventListener('pointermove',moveCropDrag);
+      for (const name of ['pointerup','pointercancel','lostpointercapture']) $('cropSelection').addEventListener(name,event=>{if(state.cropDrag?.pointerId===event.pointerId)releaseCropPointer();});
+      $('cropSelection').addEventListener('keydown',cropKeyboard);
+    }
+
+    function validateVisibleFace(face) {
+      const invalid = message => ({ valid:false, scope:'single-face', code:'invalid-face-data', message });
+      if (!Array.isArray(face) || face.length !== 3) return invalid('数据异常：可见面必须为 3 × 3。');
+      for (let row = 0; row < 3; row++) {
+        if (!Array.isArray(face[row]) || face[row].length !== 3) return invalid('数据异常：可见面必须包含 3 行，每行 3 个色块。');
+        for (let column = 0; column < 3; column++) {
+          if (!COLOR_KEYS.includes(face[row][column])) return invalid('数据异常：色块缺失或包含未知颜色。');
+        }
+      }
+      // Only a visible face is specified. Counts, opposite colors and cubie
+      // orientation/parity constraints cannot be inferred from these 9 values.
+      return { valid:true, scope:'single-face', code:'valid', message:'当前仅定义一个可见面。该单面图案可以存在于某个合法的 3×3×3 魔方状态中。' };
+    }
+
+    /**
+     * Future six-face API; never call this with a single visible mosaic face.
+     * Input: a flat array of 54 COLOR_KEYS, nine row-major facelets per face,
+     * in U, R, F, D, L, B order. Orient every face as in this unfolded net:
+     *           U
+     *        L  F  R  B
+     *           D
+     * U's bottom touches F's top; D's top touches F's bottom. Each face is
+     * viewed from outside. B's left touches R's right (do not mirror B).
+     * The six centers define the input cube's solved color scheme, including
+     * opposite pairs. No manufacturer-specific scheme is inferred from PALETTE.
+     * Cyclic corner matching rejects reflected sticker orders in that scheme.
+     * Facelet geometry and cubie invariants: Herbert Kociemba,
+     * https://www.kociemba.org/math/cubielevel.htm
+     * https://github.com/hkociemba/RubiksCube-TwophaseSolver/blob/master/defs.py
+     * https://github.com/hkociemba/RubiksCube-TwophaseSolver/blob/master/cubie.py
+     */
+    function validateFullCubeState(facelets) {
+      const invalid = (code, message) => ({ valid:false, scope:'full-cube', code, message });
+      if (!Array.isArray(facelets) || facelets.length !== 54) return invalid('facelet-count', '完整魔方必须提供按 URFDLB 顺序排列的 54 个色块。');
+      const counts = Object.fromEntries(COLOR_KEYS.map(color => [color, 0]));
+      for (let i = 0; i < 54; i++) {
+        if (!COLOR_KEYS.includes(facelets[i])) return invalid('unknown-color', '完整魔方包含缺失色块或未知颜色。');
+        counts[facelets[i]]++;
+      }
+      if (COLOR_KEYS.some(color => counts[color] !== 9)) return invalid('color-count', '完整魔方的每种颜色必须恰好有 9 个色块。');
+      const centers = [4, 13, 22, 31, 40, 49].map(index => facelets[index]);
+      if (new Set(centers).size !== 6) return invalid('centers', '完整魔方的六个中心颜色必须各不相同。');
+      const normalized = facelets.map(color => centers.indexOf(color));
+      // Ordered around each physical corner; only cyclic rotations are legal.
+      const cornerFacelets = [
+        [8,9,20], [6,18,38], [0,36,47], [2,45,11],
+        [29,26,15], [27,44,24], [33,53,42], [35,17,51]
+      ];
+      const edgeFacelets = [
+        [5,10], [7,19], [3,37], [1,46], [32,16], [28,25],
+        [30,43], [34,52], [23,12], [21,41], [50,39], [48,14]
+      ];
+      const decodeCubies = positions => {
+        const identities = positions.map(indices => indices.map(index => Math.floor(index / 9)));
+        const permutation = [], orientation = [];
+        for (const indices of positions) {
+          const actual = indices.map(index => normalized[index]);
+          let match = null;
+          for (let cubie = 0; cubie < identities.length && !match; cubie++) {
+            for (let turn = 0; turn < indices.length; turn++) {
+              if (identities[cubie].every((color, i) => actual[(i + turn) % indices.length] === color)) {
+                match = { cubie, turn };
+                break;
+              }
+            }
+          }
+          if (!match) return { error:'combination' };
+          permutation.push(match.cubie);
+          orientation.push(match.turn);
+        }
+        if (new Set(permutation).size !== positions.length) return { error:'duplicate' };
+        return { permutation, orientation };
+      };
+      const corners = decodeCubies(cornerFacelets);
+      if (corners.error) return invalid('corner-' + corners.error, corners.error === 'duplicate' ? '角块重复或缺失。' : '存在不合法的角块颜色组合或镜像贴纸顺序。');
+      const edges = decodeCubies(edgeFacelets);
+      if (edges.error) return invalid('edge-' + edges.error, edges.error === 'duplicate' ? '棱块重复或缺失。' : '存在不合法的棱块颜色组合。');
+      if (corners.orientation.reduce((sum, value) => sum + value, 0) % 3 !== 0) return invalid('corner-twist', '角块扭转总和必须为 0（模 3）。');
+      if (edges.orientation.reduce((sum, value) => sum + value, 0) % 2 !== 0) return invalid('edge-flip', '棱块翻转总和必须为 0（模 2）。');
+      const parity = permutation => {
+        let value = 0;
+        for (let i = 0; i < permutation.length; i++) {
+          for (let j = i + 1; j < permutation.length; j++) if (permutation[i] > permutation[j]) value ^= 1;
+        }
+        return value;
+      };
+      if (parity(corners.permutation) !== parity(edges.permutation)) return invalid('permutation-parity', '角块与棱块排列的奇偶性必须相同。');
+      return { valid:true, scope:'full-cube', code:'valid', message:'完整魔方状态合法，可还原至六个中心定义的配色。', centers, corners, edges };
+    }
+
+    // ---------- 编辑数据、原始生成快照与独立进度 ----------
+    const EDIT_HISTORY_LIMIT = 50;
+    function colorStatistics(colors) {
+      const statistics = Object.fromEntries(COLOR_KEYS.map(key => [key, 0]));
+      for (const key of colors) {
+        if (!COLOR_KEYS.includes(key)) throw new Error('色块数据包含未知颜色');
+        statistics[key]++;
+      }
+      return statistics;
+    }
+    function updateResultColorData(result, pixelIndex, color) {
+      if (!Number.isInteger(pixelIndex) || pixelIndex < 0 || pixelIndex >= result.colors.length || !COLOR_KEYS.includes(color)) {
+        throw new Error('色块位置或颜色无效');
+      }
+      const x = pixelIndex % result.pixelColumns, y = Math.floor(pixelIndex / result.pixelColumns);
+      const cubeIndex = Math.floor(y / 3) * result.cubeColumns + Math.floor(x / 3);
+      const previous = result.colors[pixelIndex];
+      result.colors[pixelIndex] = color;
+      result.cubes[cubeIndex].colors[y % 3][x % 3] = color;
+      result.colorStatistics[previous]--;
+      result.colorStatistics[color]++;
+    }
+    function applyColorChanges(changes, direction = 'after') {
+      for (const change of changes) updateResultColorData(state.result, change.index, change[direction]);
+      state.result.colorStatistics = colorStatistics(state.result.colors);
+      validateResult(state.result);
+      syncCompleted();
+      saveEdits();
+      saveProgress();
+      renderResult();
+    }
+    function pushEditHistory(changes) {
+      state.editHistory.push(changes);
+      if (state.editHistory.length > EDIT_HISTORY_LIMIT) state.editHistory.shift();
+    }
+    function enterStickerEditMode() {
+      if (!state.result) return;
+      state.editMode = !state.editMode;
+      state.selectedSticker = null; state.hoveredCube = null;
+      if (!state.editMode) closeStickerEditor(false);
+      renderEditControls(); renderPuzzleCanvas();
+      if (state.editMode) $('puzzleCanvas').focus({preventScroll:true});
+    }
+    function openStickerEditor(index) {
+      if (!state.result || !state.editMode || !Number.isInteger(index) || index < 0 || index >= state.result.cubeCount) return;
+      state.current = index; state.selectedSticker = null;
+      renderThumbs(); renderCurrent(); renderStickerEditor();
+      if (!$('stickerEditorDialog').open) $('stickerEditorDialog').showModal();
+    }
+    function closeStickerEditor(focusCanvas=true) {
+      state.selectedSticker = null;
+      if ($('stickerEditorDialog').open) $('stickerEditorDialog').close();
+      renderEditControls();
+      if (focusCanvas && state.editMode) $('puzzleCanvas').focus({preventScroll:true});
+    }
+    function setStickerColor(color) {
+      if (!state.result || !state.editMode || state.selectedSticker === null || !COLOR_KEYS.includes(color)) return;
+      const cube = state.result.cubes[state.current], local = state.selectedSticker;
+      const index = ((cube.row - 1) * 3 + Math.floor(local / 3)) * state.result.pixelColumns + (cube.column - 1) * 3 + local % 3;
+      const before = state.result.colors[index];
+      if (before === color) return;
+      const changes = [{index, before, after:color}];
+      pushEditHistory(changes);
+      applyColorChanges(changes);
+    }
+    function undoStickerEdit() {
+      if (!state.result || !state.editHistory.length) return;
+      applyColorChanges(state.editHistory.pop(), 'before');
+    }
+    function restoreGeneratedColors() {
+      if (!state.result) return;
+      const changes = [];
+      state.result.colors.forEach((before, index) => {
+        const after = state.originalGeneratedColors[index];
+        if (before !== after) changes.push({index, before, after});
+      });
+      if (!changes.length) return;
+      pushEditHistory(changes);
+      applyColorChanges(changes);
+    }
+    function restoreCurrentCubeColors() {
+      if (!state.result) return;
+      const cube=state.result.cubes[state.current],changes=[];
+      for(let local=0;local<9;local++){
+        const index=((cube.row-1)*3+Math.floor(local/3))*state.result.pixelColumns+(cube.column-1)*3+local%3;
+        const before=state.result.colors[index],after=state.originalGeneratedColors[index];
+        if(before!==after)changes.push({index,before,after});
+      }
+      if(!changes.length)return;pushEditHistory(changes);applyColorChanges(changes);
+    }
+    function currentCubeIsEdited() {
+      if(!state.result)return false;const cube=state.result.cubes[state.current];
+      for(let local=0;local<9;local++){const index=((cube.row-1)*3+Math.floor(local/3))*state.result.pixelColumns+(cube.column-1)*3+local%3;if(state.result.colors[index]!==state.originalGeneratedColors[index])return true;}
+      return false;
+    }
+    function renderStickerEditor() {
+      if(!state.result)return;const cube=state.result.cubes[state.current],selected=state.selectedSticker===null?null:cube.colors.flat()[state.selectedSticker];
+      $('stickerEditorTitle').textContent=`编辑 Cube ${pad(cube.id)}`;$('stickerEditorMeta').textContent=`第 ${cube.row} 行 · 第 ${cube.column} 列`;
+      $('editorCubeFace').innerHTML=cube.colors.flat().map((key,index)=>`<button type="button" data-sticker="${index}" class="sticker ${state.selectedSticker===index?'selected':''}" style="background:${PALETTE[key]?.hex||'transparent'}" aria-label="第 ${Math.floor(index/3)+1} 行，第 ${index%3+1} 列，${PALETTE[key]?.label||'未知'}色" aria-pressed="${state.selectedSticker===index}"></button>`).join('');
+      $('stickerSelection').textContent=state.selectedSticker===null?'点击一个色块，再选择颜色。':`正在编辑：第 ${Math.floor(state.selectedSticker/3)+1} 行，第 ${state.selectedSticker%3+1} 列`;
+      $('colorPicker').hidden=state.selectedSticker===null;
+      $('colorPicker').innerHTML=COLOR_KEYS.map(key=>`<button type="button" class="button color-choice" data-color="${key}" aria-label="改为${PALETTE[key].label}色" aria-pressed="${selected===key}"><i class="dot" style="background:${PALETTE[key].hex}"></i>${PALETTE[key].label}</button>`).join('');
+      const validation=validateVisibleFace(cube.colors);$('faceValidation').textContent=validation.valid?'物理状态：单面可实现 ✓':'数据异常';$('faceValidation').classList.toggle('invalid',!validation.valid);$('faceValidation').title=validation.message;
+      $('undoEdit').disabled=!state.editHistory.length;$('restoreColors').disabled=!currentCubeIsEdited();
+    }
+    function renderEditControls() {
+      $('editStickers').textContent = state.editMode ? '结束编辑模式' : '开启编辑模式';
+      $('editStickers').setAttribute('aria-pressed', String(state.editMode));
+      $('canvasEditHint').hidden=!state.editMode;
+      $('puzzleCanvas').classList.toggle('edit-picking',state.editMode);
+      $('puzzleCanvas').setAttribute('tabindex',state.editMode?'0':'-1');
+      $('puzzleCanvas').setAttribute('aria-label',state.editMode?'魔方拼图整体图，编辑模式：点击一颗魔方进行修改':'魔方拼图整体图');
+      if($('stickerEditorDialog').open)renderStickerEditor();
+    }
+    function hashValues(values) {
+      // 非安全上下文的内容标识回退；同时结合原图尺寸、完整生成数据和裁剪参数。
+      let a = 2166136261, b = 0x9e3779b9;
+      for (const value of values) {
+        a = Math.imul(a ^ value, 16777619);
+        b = Math.imul(b ^ value, 2246822519);
+      }
+      return `${(a >>> 0).toString(16).padStart(8, '0')}${(b >>> 0).toString(16).padStart(8, '0')}`;
+    }
+    async function fingerprintFile(file) {
+      const buffer = await file.arrayBuffer();
+      if (globalThis.crypto?.subtle) {
+        const digest = await crypto.subtle.digest('SHA-256', buffer);
+        return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+      }
+      return `${buffer.byteLength}:${hashValues(new Uint8Array(buffer))}`;
+    }
+    function buildProgressIdentity(result, imageId, generatedColors) {
+      return JSON.stringify({version:2, image:imageId, original:[result.originalWidth,result.originalHeight],
+        grid:[result.cubeColumns,result.cubeRows], dither:result.dither, mode:result.cropMode,
+        crop:result.crop, source:result.sourceRect, expansionBackground:EXPANSION_BACKGROUND,
+        generated:hashValues(generatedColors.map(color => COLOR_KEYS.indexOf(color)))});
+    }
+    function progressKey() { return `rubiks-puzzle:progress:v2:${state.result.progressIdentity}`; }
+    function editsKey() { return `rubiks-puzzle:edits:v2:${state.result.progressIdentity}`; }
+    function readStored(key) {
+      try { return JSON.parse(localStorage.getItem(key) || 'null'); }
+      catch { $('persistenceNotice').textContent = '本地存档无法读取；当前拼图仍可编辑、导出。'; return null; }
+    }
+    function writeStored(key, value) {
+      try { localStorage.setItem(key, JSON.stringify(value)); }
+      catch { $('persistenceNotice').textContent = '浏览器无法保存本地存档；当前修改仍可导出，本次会话结束后可能丢失。'; }
+    }
+    function saveEdits() {
+      const changes = [];
+      state.result.colors.forEach((color, index) => {
+        if (color !== state.originalGeneratedColors[index]) changes.push([index, color]);
+      });
+      writeStored(editsKey(), {version:1, changes});
+    }
+    function loadEdits() {
+      const saved = readStored(editsKey());
+      if (!saved) return;
+      if (saved.version !== 1 || !Array.isArray(saved.changes) || saved.changes.length > state.result.colors.length ||
+          saved.changes.some(item => !Array.isArray(item) || item.length !== 2 || !Number.isInteger(item[0]) ||
+            item[0] < 0 || item[0] >= state.result.colors.length || !COLOR_KEYS.includes(item[1])) ||
+          new Set(saved.changes.map(item => item[0])).size !== saved.changes.length) {
+        $('persistenceNotice').textContent = '已忽略损坏的色块存档。'; return;
+      }
+      for (const [index, color] of saved.changes) updateResultColorData(state.result, index, color);
+      state.result.colorStatistics = colorStatistics(state.result.colors);
+    }
+    function isSolidCube(cube) {
+      return validateVisibleFace(cube.colors).valid && cube.colors.flat().every(color => color === cube.colors[0][0]);
+    }
+    function automaticCompleted() { return new Set(state.result.cubes.filter(isSolidCube).map(cube => cube.id)); }
+    function syncCompleted() {
+      state.autoCompleted = automaticCompleted();
+      state.completed = new Set([...state.autoCompleted, ...state.manualCompleted]);
+    }
+    function loadProgress() {
+      const saved = readStored(progressKey());
+      state.manualCompleted = new Set(Array.isArray(saved?.manualCompleted) ? saved.manualCompleted.filter(id =>
+        Number.isInteger(id) && id >= 1 && id <= state.result.cubeCount) : []);
+      syncCompleted();
+    }
+    function saveProgress() { writeStored(progressKey(), {version:2, manualCompleted:[...state.manualCompleted]}); }
+    function toggleCurrentCompleted() {
+      const cube = state.result.cubes[state.current];
+      if (isSolidCube(cube)) return;
+      if (state.manualCompleted.has(cube.id)) state.manualCompleted.delete(cube.id);
+      else state.manualCompleted.add(cube.id);
+      syncCompleted(); saveProgress(); renderThumbs(); renderCurrent(); renderProgress();
+    }
+    function resetAssemblyProgress() {
+      if (!state.result || !confirm('确定重置当前拼图的完成状态？纯色魔方仍会保留为已完成。')) return;
+      state.manualCompleted.clear();
+      syncCompleted(); saveProgress(); renderThumbs(); renderCurrent(); renderProgress();
+    }
+
+    function markResultStale() {
+      state.settingsDirty = true;
+      if (state.result) $('resultBadge').textContent = '设置已修改 · 请重新生成';
+    }
+    function updateRecommendation() {
+      const n = Math.floor(Number($('maxCubes').value));
+      $('maxLabel').textContent = Number.isFinite(n) ? n : '—';
+      $('imageModeHint').textContent = '';
+      $('generateBtn').disabled = state.loadingImage;
+      if (state.image && n >= 1 && n <= 5000) {
+        const size = getEffectiveImageSize();
+        const grid = calculateCubeGrid(size.width, size.height, n);
+        $('gridHint').textContent = `${grid.cubeColumns} × ${grid.cubeRows}`;
+        $('usedHint').textContent = `${grid.usedCubes} 个`;
+        try {
+          const crop = $('cropMode').value === 'custom' ? state.crop : null;
+          getImageSourceOrExpansion(state.image, grid.cubeColumns * 3, grid.cubeRows * 3, $('cropMode').value,
+            crop ? {sx:crop.x, sy:crop.y, sw:crop.width, sh:crop.height} : null);
+        } catch (error) {
+          $('imageModeHint').textContent = error.message;
+          $('generateBtn').disabled = true;
+        }
+      } else {
+        $('gridHint').textContent = '— × —'; $('usedHint').textContent = '— 个';
+      }
+    }
+    async function loadFile(file) {
+      $('fileError').textContent = '';
+      if (!file || !['image/jpeg','image/png','image/webp'].includes(file.type)) {
+        $('fileError').textContent = '请选择 JPG、PNG 或 WebP 图片。'; return;
+      }
+      const token = ++state.loadToken, url = URL.createObjectURL(file), img = new Image();
+      state.loadingImage = true; updateRecommendation();
+      try {
+        const decoded = new Promise((resolve, reject) => {
+          img.onload = resolve; img.onerror = () => reject(new Error('图片读取失败，请更换文件。'));
+        });
+        img.src = url;
+        const [imageId] = await Promise.all([fingerprintFile(file), decoded]);
+        if (token !== state.loadToken) { URL.revokeObjectURL(url); return; }
+        if ($('cropEditor').open) closeCropEditor();
+        if (state.image?.src?.startsWith('blob:')) URL.revokeObjectURL(state.image.src);
+        state.image = img; state.fileName = file.name; state.imageId = imageId; state.crop = null;
+        $('customCropOption').disabled = true;
+        if ($('cropMode').value === 'custom') $('cropMode').value = 'center';
+        $('sourcePreview').src = url; $('sourcePreview').style.display = 'block';
+        $('uploadCopy').style.display = 'none';
+        updateCropSummary(); markResultStale();
+      } catch (error) {
+        URL.revokeObjectURL(url);
+        if (token === state.loadToken) $('fileError').textContent = error.message;
+      } finally {
+        if (token === state.loadToken) { state.loadingImage = false; updateRecommendation(); }
+      }
+    }
+    function generate() {
+      try {
+        $('generateError').textContent = ''; $('persistenceNotice').textContent = '';
+        if (!state.image) throw new Error('请先上传图片。');
+        if (state.loadingImage) throw new Error('图片读取中，请稍候。');
+        const max = Math.floor(Number($('maxCubes').value));
+        if (!Number.isFinite(max) || max < 1 || max > 5000) throw new Error('魔方数量必须在 1–5000 之间。');
+        const cropMode = $('cropMode').value, size = getEffectiveImageSize();
+        const grid = calculateCubeGrid(size.width, size.height, max);
+        const pc = grid.cubeColumns * 3, pr = grid.cubeRows * 3;
+        const crop = cropMode === 'custom' ? {...state.crop} : {type:cropMode};
+        const sourceRect = cropMode === 'custom' ? {sx:crop.x, sy:crop.y, sw:crop.width, sh:crop.height} : null;
+        const prepared = getImageSourceOrExpansion(state.image, pc, pr, cropMode, sourceRect);
+        const imageData = sampleImage(state.image, pc, pr, cropMode, sourceRect);
+        const colors = quantizePixels(imageData, pc, pr, $('dither').checked);
+        const result = {
+          cubeColumns:grid.cubeColumns, cubeRows:grid.cubeRows, cubeCount:grid.usedCubes,
+          pixelColumns:pc, pixelRows:pr, cubes:splitIntoCubes(colors, pc, pr),
+          colorStatistics:colorStatistics(colors), colors,
+          originalWidth:state.image.naturalWidth, originalHeight:state.image.naturalHeight,
+          maxCubes:max, dither:$('dither').checked, cropMode, crop, sourceRect:prepared.sourceRect,
+          preparedWidth:prepared.canvasWidth, preparedHeight:prepared.canvasHeight
+        };
+        validateResult(result);
+        result.progressIdentity = buildProgressIdentity(result, state.imageId, colors);
+        state.result = result; state.current = 0; state.settingsDirty = false;
+        state.originalGeneratedColors = colors.slice(); state.editHistory = [];
+        if($('stickerEditorDialog').open)$('stickerEditorDialog').close();
+        state.editMode = false; state.selectedSticker = null; state.hoveredCube = null;
+        loadEdits(); loadProgress(); validateResult(result); renderResult();
+      } catch (error) { $('generateError').textContent = error.message; }
+    }
+    function validateResult(result) {
+      if (result.cubeColumns * result.cubeRows !== result.cubeCount || result.pixelColumns !== result.cubeColumns * 3 ||
+          result.pixelRows !== result.cubeRows * 3 || result.cubes.length !== result.cubeCount ||
+          result.colors.length !== result.pixelColumns * result.pixelRows) throw new Error('结果一致性校验失败');
+      for (const cube of result.cubes) {
+        if (!validateVisibleFace(cube.colors).valid) throw new Error('魔方拆解数据异常');
+        for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) {
+          if (cube.colors[y][x] !== result.colors[((cube.row - 1) * 3 + y) * result.pixelColumns + (cube.column - 1) * 3 + x]) {
+            throw new Error('整体色块与魔方色块不一致');
+          }
+        }
+      }
+      const expected = colorStatistics(result.colors);
+      if (COLOR_KEYS.some(key => result.colorStatistics[key] !== expected[key])) throw new Error('色块统计不一致');
+    }
+    function renderThumbs() {
+      $('thumbGrid').innerHTML = state.result.cubes.map((cube, index) => `<button type="button" class="thumb ${index === state.current ? 'active' : ''} ${state.completed.has(cube.id) ? 'done' : ''}" data-index="${index}" aria-label="Cube ${pad(cube.id)}${state.completed.has(cube.id) ? ' 已完成' : ''}"><span class="thumb-face" aria-hidden="true">${cube.colors.flat().map(key => `<i style="background:${PALETTE[key].hex}"></i>`).join('')}</span>${pad(cube.id)}${state.completed.has(cube.id) ? ' ✓' : ''}</button>`).join('');
+    }
+    function renderCurrent() {
+      const cube = state.result.cubes[state.current], solid = isSolidCube(cube);
+      $('currentLabel').textContent = `Cube ${pad(cube.id)}${state.completed.has(cube.id) ? ' ✓' : ''}`;
+      $('cubeRow').textContent = `Row ${cube.row}`; $('cubeCol').textContent = `Column ${cube.column}`;
+      $('jumpInput').value = cube.id;
+      $('cubeFace').innerHTML = cube.colors.flat().map(key => `<i style="background:${PALETTE[key]?.hex || 'transparent'}" title="${PALETTE[key]?.label || '数据异常'}"></i>`).join('');
+      $('markDone').textContent = solid ? '纯色 · 自动完成' : state.completed.has(cube.id) ? '取消完成' : '标记完成';
+      $('markDone').className = `button ${state.completed.has(cube.id) ? 'ghost' : ''}`;
+      $('markDone').disabled = solid; $('prevCube').disabled = state.current === 0;
+      $('nextCube').disabled = state.current === state.result.cubeCount - 1;
+      // 只滚动缩略图容器，避免编辑时把页面强制滚离色块。
+      const active = $('thumbGrid').querySelector('.thumb.active');
+      if (active) {
+        const parentRect = $('thumbGrid').getBoundingClientRect(), activeRect = active.getBoundingClientRect();
+        if (activeRect.top < parentRect.top) $('thumbGrid').scrollTop += activeRect.top - parentRect.top;
+        else if (activeRect.bottom > parentRect.bottom) $('thumbGrid').scrollTop += activeRect.bottom - parentRect.bottom;
+      }
+    }
+    function goTo(index) {
+      if (!state.result || !Number.isFinite(index)) return;
+      state.current = clamp(Math.floor(index), 0, state.result.cubeCount - 1);
+      state.selectedSticker = null; renderThumbs(); renderCurrent();
+    }
+
+    // Call from selfTests(); this function is pure except for throwing on failure.
+    function cubeValidationSelfTests() {
+      let checks = 0;
+      const check = (condition, label) => { checks++; if (!condition) throw new Error('Cube validation self-test failed: ' + label); };
+      const face = [['white','red','blue'], ['orange','yellow','green'], ['yellow','yellow','yellow']];
+      check(validateVisibleFace(face).valid, 'arbitrary legal single face');
+      check(validateVisibleFace(Array.from({length:3}, () => Array(3).fill('white'))).valid, 'monochrome single face');
+      check(!validateVisibleFace([['invalid','red','blue'], face[1], face[2]]).valid, 'unknown visible color');
+      check(!validateVisibleFace([face[0], face[1]]).valid, 'missing visible row');
+      check(!validateVisibleFace([Array(3), face[1], face[2]]).valid, 'sparse visible row');
+      check(!validateVisibleFace(Array(3)).valid, 'sparse visible face');
+      check(!validateVisibleFace(face.flat()).valid, 'flat nine is not a 3 by 3 matrix');
+
+      const solved = ['white','red','green','yellow','orange','blue'].flatMap(color => Array(9).fill(color));
+      const expectCode = (input, code, label) => check(validateFullCubeState(input).code === code, label);
+      const swap = (input, a, b) => { [input[a], input[b]] = [input[b], input[a]]; return input; };
+      expectCode(solved, 'valid', 'solved full cube');
+      expectCode(solved.slice(1), 'facelet-count', '53 facelets');
+      expectCode(Array(54), 'unknown-color', 'sparse full cube');
+      expectCode(solved.map((color, i) => i === 0 ? 'purple' : color), 'unknown-color', 'unknown full color');
+      expectCode(solved.map((color, i) => i === 0 ? 'red' : color), 'color-count', 'unequal color counts');
+      expectCode(swap(solved.slice(), 0, 13), 'centers', 'duplicate centers with preserved color counts');
+      expectCode(swap(solved.slice(), 5, 10), 'edge-flip', 'one flipped edge');
+      const twist = solved.slice();
+      [twist[8], twist[9], twist[20]] = [twist[20], twist[8], twist[9]];
+      expectCode(twist, 'corner-twist', 'one twisted corner');
+      expectCode(swap(swap(solved.slice(), 5, 7), 10, 19), 'permutation-parity', 'two edges exchanged');
+      expectCode(swap(solved.slice(), 9, 20), 'corner-combination', 'reflected corner');
+      expectCode(swap(solved.slice(), 7, 32), 'edge-duplicate', 'duplicate edge identities with balanced counts');
+      const duplicateCorners = solved.slice();
+      [duplicateCorners[6], duplicateCorners[18], duplicateCorners[38]] = ['white','red','green'];
+      [duplicateCorners[35], duplicateCorners[17], duplicateCorners[51]] = ['yellow','blue','orange'];
+      expectCode(duplicateCorners, 'corner-duplicate', 'duplicate corner identities with balanced counts');
+
+      // Generate real face turns independently with 3D geometry, so the tests
+      // do not reproduce the validator's corner/edge lookup tables.
+      const axes = [
+        {n:[0,1,0], right:[1,0,0], down:[0,0,1]},
+        {n:[1,0,0], right:[0,0,-1], down:[0,-1,0]},
+        {n:[0,0,1], right:[1,0,0], down:[0,-1,0]},
+        {n:[0,-1,0], right:[1,0,0], down:[0,0,-1]},
+        {n:[-1,0,0], right:[0,0,1], down:[0,-1,0]},
+        {n:[0,0,-1], right:[-1,0,0], down:[0,-1,0]}
+      ];
+      const stickers = axes.flatMap(({n,right,down}) => Array.from({length:9}, (_, i) => ({
+        n:n.slice(), p:n.map((value,j) => value + right[j] * (i % 3 - 1) + down[j] * (Math.floor(i / 3) - 1))
+      })));
+      const key = sticker => sticker.p.join(',') + '/' + sticker.n.join(',');
+      const indices = new Map(stickers.map((sticker,i) => [key(sticker),i]));
+      const dot = (a,b) => a.reduce((sum,value,i) => sum + value * b[i],0);
+      const rotate = (v,n) => {
+        const cross = [n[1]*v[2]-n[2]*v[1], n[2]*v[0]-n[0]*v[2], n[0]*v[1]-n[1]*v[0]];
+        return v.map((_,i) => -cross[i] + n[i]*dot(n,v));
+      };
+      const turn = (input, faceIndex, wholeCube = false) => {
+        const output = input.slice(), normal = axes[faceIndex].n;
+        stickers.forEach((sticker,from) => {
+          if (wholeCube || dot(sticker.p,normal) === 1) {
+            const to = indices.get(key({p:rotate(sticker.p,normal),n:rotate(sticker.n,normal)}));
+            output[to] = input[from];
+          }
+        });
+        return output;
+      };
+      for (let f = 0; f < 6; f++) {
+        let current = solved;
+        for (let power = 1; power <= 4; power++) {
+          current = turn(current, f);
+          check(validateFullCubeState(current).valid, 'legal face ' + f + ' turn ' + power);
+        }
+        check(current.join() === solved.join(), 'four quarter turns restore face ' + f);
+        check(validateFullCubeState(turn(solved, f, true)).valid, 'whole cube rotation changes centers ' + f);
+      }
+      let scramble = solved, seed = 371;
+      for (let i = 0; i < 120; i++) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        scramble = turn(scramble, seed % 6);
+        check(validateFullCubeState(scramble).valid, 'deterministic legal scramble step ' + i);
+      }
+      const before = JSON.stringify(scramble);
+      validateFullCubeState(scramble);
+      check(JSON.stringify(scramble) === before, 'full validation leaves input unchanged');
+      return checks;
+    }
+
+    function cropSelfTests(assert=(condition,label)=>console.assert(condition,label)) {
+      const original={naturalWidth:4000,naturalHeight:3000},crop={type:'custom',x:1000,y:500,width:2000,height:1000};
+      const effective=getEffectiveImageSize(original,crop,'custom');
+      assert(effective.width===2000 && effective.height===1000 && effective.width/effective.height===2,'自定义裁剪使用原图像素尺寸及 2:1 比例');
+      const full=getEffectiveImageSize(original,crop,'center');
+      assert(full.width===4000 && full.height===3000,'切换自动裁剪后使用完整原图');
+      const square={naturalWidth:1200,naturalHeight:1200};
+      const expanded=getImageSourceOrExpansion(square,16,9,'expand-width');
+      assert(Math.abs(expanded.canvasWidth-2133.333333333333)<1e-7 && expanded.canvasHeight===1200,'1200 方图横向扩充到约 2133 × 1200');
+      assert(expanded.drawWidth===1200 && expanded.drawHeight===1200 && expanded.sourceRect.sw===1200 && expanded.sourceRect.sh===1200 && expanded.offsetX>0 && expanded.offsetY===0,'扩充不改变原图尺寸和比例，居中保留全部内容');
+      const tall=getImageSourceOrExpansion(square,9,16,'expand-height');
+      assert(tall.canvasWidth===1200 && Math.abs(tall.canvasHeight-2133.333333333333)<1e-7 && tall.drawWidth===tall.drawHeight,'纵向扩充尺寸正确，原图保持正方形');
+      let rejected=false;
+      try {getImageSourceOrExpansion(square,16,9,'expand-height');} catch {rejected=true;}
+      assert(rejected,'不适用的扩充方向明确报错');
+      const explicit=getImageSourceOrExpansion(original,7,4,'right',{sx:1000,sy:500,sw:2000,sh:1000});
+      assert(explicit.kind==='custom' && explicit.sourceRect.sx===1000 && explicit.sourceRect.sw===2000 && explicit.sourceRect.sh===1000 && explicit.canvasHeight>1000,'显式 sourceRect 优先且不进行二次裁剪');
+      const start={type:'custom',x:100,y:100,width:300,height:200};
+      for (const handle of ['nw','n','ne','e','se','s','sw','w','move']) {
+        for (const delta of [-99999,99999]) {
+          const moved=resizedCrop(start,handle,delta,delta,square);
+          assert(moved.x>=0 && moved.y>=0 && moved.width>=10 && moved.height>=10 && moved.x+moved.width<=1200 && moved.y+moved.height<=1200,`裁剪 ${handle} 的边界和最小尺寸`);
+        }
+      }
+    }
+
+    function selfTests() {
+      let checks = 0;
+      const assert = (condition, label) => { checks++; if (!condition) throw new Error(`自检失败：${label}`); };
+      const grid = calculateCubeGrid(1600,900,200);
+      assert(grid.usedCubes <= 200 && Math.abs((grid.cubeColumns/grid.cubeRows)/(16/9)-1)<.2, '网格推荐');
+      assert(calculateCubeGrid(100000,1,1).usedCubes === 1, '超宽原图仍能推荐网格');
+      const colors = Array.from({length:36}, (_,i) => COLOR_KEYS[i%6]);
+      const cubes = splitIntoCubes(colors,6,6);
+      assert(cubes.length === 4 && cubes.every(cube => validateVisibleFace(cube.colors).valid), '3×3 拆解');
+      assert(COLOR_KEYS.includes(quantizeToCubeColor([123,45,210])), '六色量化');
+      cropSelfTests(assert);
+      checks += cubeValidationSelfTests();
+      const generated = Array(36).fill('red');
+      const result = {cubeColumns:2,cubeRows:2,cubeCount:4,pixelColumns:6,pixelRows:6,
+        colors:generated.slice(),cubes:splitIntoCubes(generated,6,6),colorStatistics:colorStatistics(generated),
+        originalWidth:4000,originalHeight:3000,dither:false,cropMode:'custom',crop:{type:'custom',x:1000,y:500,width:2000,height:1000},
+        sourceRect:{sx:1000,sy:500,sw:2000,sh:1000}};
+      updateResultColorData(result,0,'blue');
+      assert(result.colors[0]==='blue' && result.cubes[0].colors[0][0]==='blue', 'Cube 001 左上角色块与整体同步');
+      assert(result.colorStatistics.red===35 && result.colorStatistics.blue===1, '编辑后统计同步');
+      validateResult(result);
+      const originalIdentity=buildProgressIdentity(result,'image-a',generated);
+      assert(originalIdentity!==buildProgressIdentity({...result,crop:{...result.crop,x:999}},'image-a',generated), '不同裁剪不串档');
+      assert(originalIdentity!==buildProgressIdentity({...result,cropMode:'expand-width'},'image-a',generated), '不同扩充模式不串档');
+      assert(originalIdentity!==buildProgressIdentity(result,'image-b',generated), '同名不同图片不串档');
+      assert(generated[0]==='red', '原始生成快照未被编辑破坏');
+      const savedState = {result:state.result,completed:state.completed,autoCompleted:state.autoCompleted,manualCompleted:state.manualCompleted,editHistory:state.editHistory};
+      try {
+        state.result=result; state.manualCompleted=new Set([1]); syncCompleted();
+        assert(state.completed.has(1) && !state.autoCompleted.has(1), '非纯色手动完成保留');
+        updateResultColorData(result,0,'red'); syncCompleted();
+        assert(state.autoCompleted.has(1) && state.manualCompleted.has(1), '编辑成纯色自动完成且保留手动来源');
+        updateResultColorData(result,0,'blue'); syncCompleted();
+        assert(!state.autoCompleted.has(1) && state.completed.has(1), '离开纯色不清除手动完成');
+        state.manualCompleted.clear(); syncCompleted();
+        assert(!state.completed.has(1), '只因纯色完成的魔方变为混色后取消自动完成');
+        state.editHistory=[];
+        for(let i=0;i<60;i++) pushEditHistory([{index:0,before:'red',after:'blue'}]);
+        assert(state.editHistory.length===50, '至少保留最近 20 次编辑');
+      } finally { Object.assign(state,savedState); }
+      console.info(`魔方拼图自检通过：${checks} 项`);
+      return {passed:checks};
+    }
+
+    $('emptyGlyph').innerHTML = COLOR_KEYS.concat(['white','red','blue']).slice(0,9).map(() => '<i></i>').join('');
+    $('fileInput').addEventListener('change', event => { loadFile(event.target.files[0]); event.target.value = ''; });
+    ['dragenter','dragover'].forEach(type => $('dropZone').addEventListener(type, event => { event.preventDefault(); $('dropZone').classList.add('drag'); }));
+    ['dragleave','drop'].forEach(type => $('dropZone').addEventListener(type, event => { event.preventDefault(); $('dropZone').classList.remove('drag'); }));
+    $('dropZone').addEventListener('drop', event => loadFile(event.dataTransfer.files[0]));
+    $('maxCubes').addEventListener('input', () => { updateRecommendation(); markResultStale(); });
+    $('cropMode').addEventListener('change', () => { updateCropSummary(); updateRecommendation(); markResultStale(); });
+    $('dither').addEventListener('change', markResultStale);
+    $('generateBtn').addEventListener('click', generate);
+    ['showNumbers','showCompletion'].forEach(id => $(id).addEventListener('change', renderPuzzleCanvas));
+    $('zoomRange').addEventListener('input', event => { state.zoom=event.target.value/100; $('puzzleCanvas').style.zoom=state.zoom; $('zoomLabel').textContent=`${event.target.value}%`; });
+    $('exportPng').addEventListener('click', exportPNG); $('printGuide').addEventListener('click', printGuide);
+    $('thumbGrid').addEventListener('click', event => { const button=event.target.closest('[data-index]'); if(button) goTo(Number(button.dataset.index)); });
+    $('prevCube').addEventListener('click', () => goTo(state.current-1)); $('nextCube').addEventListener('click', () => goTo(state.current+1));
+    $('jumpBtn').addEventListener('click', () => goTo(Number($('jumpInput').value)-1));
+    $('jumpInput').addEventListener('keydown', event => { if(event.key==='Enter') goTo(Number(event.target.value)-1); });
+    $('markDone').addEventListener('click', toggleCurrentCompleted); $('resetProgress').addEventListener('click', resetAssemblyProgress);
+    $('editStickers').addEventListener('click', enterStickerEditMode);
+    $('puzzleCanvas').addEventListener('pointermove',event=>{if(!state.editMode)return;const index=cubeIndexFromCanvasPoint($('puzzleCanvas'),event.clientX,event.clientY);if(index!==state.hoveredCube){state.hoveredCube=index;renderPuzzleCanvas();}});
+    $('puzzleCanvas').addEventListener('pointerleave',()=>{if(state.editMode&&state.hoveredCube!==null){state.hoveredCube=null;renderPuzzleCanvas();}});
+    $('puzzleCanvas').addEventListener('click',event=>{if(!state.editMode)return;const index=cubeIndexFromCanvasPoint($('puzzleCanvas'),event.clientX,event.clientY);if(index!==null)openStickerEditor(index);});
+    $('editorCubeFace').addEventListener('click', event => {
+      const sticker=event.target.closest('[data-sticker]');
+      if(!sticker || !state.editMode) return;
+      state.selectedSticker=Number(sticker.dataset.sticker); renderStickerEditor();
+      $('editorCubeFace').querySelector(`[data-sticker="${state.selectedSticker}"]`)?.focus({preventScroll:true});
+    });
+    $('colorPicker').addEventListener('click', event => { const button=event.target.closest('[data-color]'); if(button) { setStickerColor(button.dataset.color); $('colorPicker').querySelector(`[data-color="${button.dataset.color}"]`)?.focus({preventScroll:true}); } });
+    $('undoEdit').addEventListener('click', undoStickerEdit); $('restoreColors').addEventListener('click', restoreCurrentCubeColors);
+    $('closeStickerEditor').addEventListener('click',()=>closeStickerEditor());$('finishStickerEditor').addEventListener('click',()=>closeStickerEditor());
+    $('stickerEditorDialog').addEventListener('cancel',event=>{event.preventDefault();closeStickerEditor();});
+    $('theme-toggle').addEventListener('click', () => { const dark=document.body.classList.contains('dark'); document.body.classList.toggle('dark',!dark); document.body.classList.toggle('light',dark); $('theme-toggle').textContent=dark?'深色':'浅色'; });
+    bindCropEvents();
+    selfTests(); updateCropSummary(); updateRecommendation();
+    window.RubiksPuzzle = {
+      calculateCubeGrid, quantizeToCubeColor, splitIntoCubes, PALETTE, COLOR_KEYS,
+      getEffectiveImageSize, getImageSourceOrExpansion, prepareImageCanvas, sampleImage,
+      validateVisibleFace, validateFullCubeState, updateResultColorData, validateResult, cubeIndexFromCanvasPoint, selfTests,
+      getState: () => JSON.parse(JSON.stringify(state, (key,value) => value instanceof Set ? [...value] :
+        key==='image' ? (value ? {naturalWidth:value.naturalWidth,naturalHeight:value.naturalHeight} : null) :
+        key==='cropReturnFocus' ? undefined : value))
+    };
+  })();
+  </script>
+</body>
+</html>
